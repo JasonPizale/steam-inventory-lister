@@ -38,7 +38,7 @@ def sort_items(items, key, descending=False):
     
     return sorted(items, key=lambda x: x.get(field), reverse=descending)
 
-def apply_filters(items, categories, min_price, max_price, sort_key=None):
+def apply_filters(items, categories, min_price, max_price, sort_key=None, descending=False):
     """Apply category + price filters, then optional sorting"""
     items = filter_by_category(items, categories)
     items = filter_by_price(items, min_price, max_price)
