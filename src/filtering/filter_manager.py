@@ -1,7 +1,7 @@
 """
 Utility functions for filtering and sorting Steam inventory items.
 """
-from helpers import is_marketable
+from utils.helpers import is_marketable
 
 def filter_by_category(items, categories):
     """Returns items that match given categories and are marketable"""

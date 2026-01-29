@@ -1,41 +1,109 @@
-# goals:
-# 1. for each marketable item in inventory, fetch its price
-# 2. handle steam rate limits gracefully
-# 3. parse lowest price, volume, optionally price graphs
-# 4. merge price info back into inventory
-# 5. be robust to missing or malformed data
+import requests
+import time
+from typing import Dict, Any, Optional
+from utils.helpers import info, warn
 
-def get_price_for_item(item, session_headers):
-    # build market url using build_price_url(item)
-    # call fetch_price(url, session_headers) to get JSON data
-    # return parsed price data (lowest_price, volume) (price graph optional)
-    pass
+STEAM_PRICE_URL = "https://steamcommunity.com/market/priceoverview/"
 
-def build_price_url(item):
-    # construct steam market price url
-    # properly url-encode item names (market_hash_name)
-    # include app id and any required parameters
-    pass
+# -----------------------------
+# Core helpers
+# -----------------------------
 
-def fetch_price(url, session_headers):
-    # use retry_fetch() to make request resilient
-    # parse JSON response
-    # detect rate-limits -> call handle_rate_limit() if necessary
-    # if price missing, return fallback values
-    pass
+def fetch_price(
+    url: str,
+    session_headers: Dict[str, str],
+    params: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    try:
+        resp = requests.get(
+            url,
+            headers=session_headers,
+            params=params,
+            timeout=10
+        )
 
-def handle_rate_limit(response):
-    # detect steam rate-limit response (e.g., HTTP 429 or empty/invalid JSON)
-    # pause/sleep for a few seconds before retrying
-    pass
+        if resp.status_code == 429:
+            handle_rate_limit(resp)
+            return None
 
-def merge_prices_with_inventory(inventory, price_map):
-    # attach lowest_price, volume, etc., to each inventory item
-    # skip items without price data
-    pass
+        if resp.status_code != 200:
+            return None
 
-def build_price_map(inventory, session_headers):
-    # iterate over unique items to avoid redundant requests
-    # for each item call get_price_for_item(item, session_headers)
-    # store results in a dict keyed by (app_id, class_id) or market_hash_name
-    pass
+        data = resp.json()
+        if not data.get("success"):
+            return None
+
+        return data
+
+    except Exception as e:
+        warn(f"Price fetch failed: {e}")
+        return None
+
+def handle_rate_limit(response) -> None:
+    if response.status_code == 429:
+        warn("Rate limited by Steam, sleeping...")
+        time.sleep(5)
+
+def get_price_for_item(
+    item: Dict[str, Any],
+    session_headers: Dict[str, str]
+) -> Optional[Dict[str, Any]]:
+    name = item.get("market_hash_name")
+    if not name:
+        return None
+
+    params = {
+        "appid": item.get("appid", 730),
+        "currency": 1,
+        "market_hash_name": name,
+    }
+
+    raw = fetch_price(STEAM_PRICE_URL, session_headers, params)
+    if not raw:
+        return None
+
+    return {
+        "lowest_price": _clean_price(raw.get("lowest_price")),
+        "median_price": _clean_price(raw.get("median_price")),
+        "volume": raw.get("volume"),
+    }
+
+def build_price_map(
+        inventory: list,
+        session_headers: Dict[str, str],
+        delay: float = 0.5
+) -> Dict[str, Dict[str, Any]]:
+    price_map = {}
+
+    for item in inventory:
+        name = item.get("market_hash_name")
+        if not name:
+            continue
+
+        price = get_price_for_item(item, session_headers)
+        if price:
+            price_map[name] = price
+        
+        time.sleep(delay)
+
+    return price_map
+
+def merge_prices_with_inventory(inventory: list, price_map: Dict[str, Dict[str, Any]]) -> list:
+    for item in inventory:
+        name = item.get("market_hash_name")
+        if name in price_map:
+            item.update(price_map[name])
+    return inventory
+
+# -----------------------------
+# Utils
+# -----------------------------
+
+def _clean_price(value: Optional[str]) -> Optional[float]:
+    if not value:
+        return None
+    return float(
+        value.replace("$", "")
+            .replace(",", "")
+            .strip()
+    )
