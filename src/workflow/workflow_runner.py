@@ -1,3 +1,4 @@
+import webbrowser
 from typing import List, Dict, Any
 from utils.helpers import info, warn, wait
 
@@ -10,15 +11,21 @@ def run_assisted_workflow(queue: List[Dict[str, Any]]) -> None:
     Run through a queue of inventory items, prompting user actions when needed
     """
     total = len(queue)
+
     for index, item in enumerate(queue, start=1):
         display_progress(index, total, item)
 
-        # TODO: implement any automated processing or user prompts here
+        sell_url = item.get("sell_url")
+        if sell_url:
+            webbrowser.open_new_tab(sell_url)
+        else:
+            warn("No sell URL found for item")
+            continue
+    
         pause_for_confirmation(item)
 
-        # TODO: add your workflow logic for listing, logging, etc.
         info(f"Processed item: {item.get('market_hash_name', 'UNKNOWN')}")
-    
+
     info("Workflow complete!")
 
 def display_progress(index: int, total: int, item: Dict[str, Any]) -> None:
