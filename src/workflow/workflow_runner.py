@@ -35,7 +35,7 @@ def run_assisted_workflow(
         display_progress(index, total, item)
 
         user_action = prompt_user(item)
-        if action == "q":
+        if user_action == "q":
             warn("Workflow aborted by user")
             break
 
