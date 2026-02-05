@@ -2,45 +2,87 @@ import webbrowser
 from typing import List, Dict, Any
 from utils.helpers import info, warn, wait
 
+DEFAULT_PAUSE_SECONDS = 1
+
 # -----------------------------
 # Core Workflow Functions
 # -----------------------------
 
-def run_assisted_workflow(queue: List[Dict[str, Any]]) -> None:
+def run_assisted_workflow(
+        queue: List[Dict[str, Any]],
+        dry_run: bool = False,
+        pause_seconds: int = DEFAULT_PAUSE_SECONDS
+        ) -> None:
     """
-    Run through a queue of inventory items, prompting user actions when needed
+    Run through a queue of inventory items, opening the sell page in browser
+    and letting the user confirm each listing manually.
+
+    Controls:
+    y = open sell page
+    n = skip item
+    q = quit 
     """
+
     total = len(queue)
+    opened = 0
+    skipped = 0
+
+    info(f"Starting assisted workflow ({total} items)")
+    if dry_run:
+        warn("Dry run mode enabled - no browser tabs will be opened.")
 
     for index, item in enumerate(queue, start=1):
         display_progress(index, total, item)
 
-        sell_url = item.get("sell_url")
-        if sell_url:
-            webbrowser.open_new_tab(sell_url)
-        else:
-            warn("No sell URL found for item")
+        user_action = prompt_user(item)
+        if action == "q":
+            warn("Workflow aborted by user")
+            break
+
+        if user_action == "n":
+            skipped += 1
             continue
-    
-        pause_for_confirmation(item)
 
-        info(f"Processed item: {item.get('market_hash_name', 'UNKNOWN')}")
+        sell_url = item.get("sell_url")
+        if not sell_url:
+            warn(f"No sell URL found for item: {item.get('market_hash_name')}")
+            skipped += 1
+            continue
 
-    info("Workflow complete!")
+        if dry_run:
+            info(f"[Dry Run] Would open: {sell_url}")
+        else:
+            info(f"Opening sell page for: {item.get('market_hash_name')}")
+            webbrowser.open_new_tab(sell_url)
+            wait(pause_seconds)
+            
+        opened += 1
+
+    info("Workflow complete")
+    info(f"Opened: {opened}")
+    info(f"Skipped: {skipped}")
+    info(f"Remaining: {total - opened - skipped}")
 
 def display_progress(index: int, total: int, item: Dict[str, Any]) -> None:
     """
     Display progress through the workflow
     """
     name = item.get("market_hash_name", "UNKNOWN")
-    print(f"[{index}/{total}] Processing: {name}")
+    print(f"\n[{index}/{total}] {name}")
 
-def pause_for_confirmation(item: Dict[str, Any], pause_seconds: int = 1) -> None:
+def prompt_user(item: Dict[str, Any]) -> str:
     """
-    Pause execution to let the user confirm or review the item
+    Prompt the user for action on the current item.
+    Returns 'y' (open), 'n' (skip), or 'q' (quit).
     """
     name = item.get("market_hash_name", "UNKNOWN")
-    response = input(f"Confirm processing item '{name}'? (y/n) ").strip().lower()
-    if response != "y":
-        warn(f"Skipping item: {name}")
-        wait(pause_seconds)  # Optional short pause before continuing
+
+    while True:
+        choice = input(
+            f"Process '{name}'? [y = open, n = skip, q = quit]: "
+        ).strip().lower()
+
+        if choice in ("y", "n", "q"):
+            return choice
+        
+        warn("Invalid input. Please enter 'y', 'n', or 'q'.")
