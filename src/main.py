@@ -80,6 +80,14 @@ def run():
             warn("User aborted workflow.")
             return
         
+    export_path = "listing_queue.json"
+    queue_manager.export_queue(listing_queue, export_path)
+    info(f"Queue exported to {export_path}")
+
+    info(f"Queue summary:")
+    info(f"  Total items in queue: {len(listing_queue)}")
+    info(f"  Items exceeding minimum price or filters applied: {len(filtered_items)}")
+    info(f"  Full inventory size: {len(parsed_inventory)}")
 
     # -----------------------------
     # 6. Assisted Listing Workflow
