@@ -4,7 +4,7 @@ from market import price_fetcher
 from filtering import filter_manager
 from queue import queue_manager
 from workflow import workflow_runner
-from utils.helpers import info, warn
+from utils.helpers import info, warn, prompt_optional_float, prompt_sort_key
 
 def run():
     info("Starting Steam Market Assistant")
@@ -41,11 +41,12 @@ def run():
     # -----------------------------
     # 4. Item Filtering
     # -----------------------------
-    # TODO: replace with real user input or config
-    categories = None
-    min_price = None
-    max_price = None
-    sort_key = "price"
+    info("Set optional filters (press Enter to skip):")
+
+    min_price = prompt_optional_float("Minimum price ($): ")
+    max_price = prompt_optional_float("Maximum price ($): ")
+    sort_key = prompt_sort_key()
+    categories = None # TODO: implement category filtering
 
     filtered_items = filter_manager.apply_filters(
         parsed_inventory,
@@ -64,10 +65,26 @@ def run():
     # -----------------------------
     listing_queue = queue_manager.build_listing_queue(filtered_items)
 
+    if not workflow_runner.show_preflight_summary(listing_queue):
+        warn("User cancelled before workflow start.")
+        return
+
     if not listing_queue:
         warn("Listing queue is empty. Exiting.")
         return
-        
+
+ # --- Pre-flight summary ---
+    info("Pre-flight summary:")
+    info(f"  Inventory items: {len(parsed_inventory)}")
+    info(f"  Filtered items: {len(filtered_items)}")
+    info(f"  Listing queue: {len(listing_queue)}")
+
+    # --- Dry-run prompt ---
+    dry_run_input = input("Run in dry-run mode (no browser tabs)? (y/n): ").strip().lower()
+    dry_run = dry_run_input == "y"
+    if dry_run:
+        warn("Dry run mode enabled - no browser tabs will be opened.")
+
     # -----------------------------
     # Guardrail: prevent accidental tab explosion
     # ----------------------------- 
@@ -79,20 +96,35 @@ def run():
         if confirm != "y":
             warn("User aborted workflow.")
             return
-        
-    export_path = "listing_queue.json"
-    queue_manager.export_queue(listing_queue, export_path)
-    info(f"Queue exported to {export_path}")
+            
+    # -----------------------------
+    # Export queue and display summary
+    # -----------------------------
+    export_input = input("Export listing queue to JSON? (y/n): ").strip().lower()
+    if export_input == "y":
+        filepath = input("Enter file path to save queue (e.g., queue.json): ").strip()
+        queue_manager.export_queue(listing_queue, filepath)
 
-    info(f"Queue summary:")
-    info(f"  Total items in queue: {len(listing_queue)}")
-    info(f"  Items exceeding minimum price or filters applied: {len(filtered_items)}")
-    info(f"  Full inventory size: {len(parsed_inventory)}")
+    total_inventory = len(parsed_inventory)
+    total_filtered = len(filtered_items)
+    total_queue = len(listing_queue)
+    total_estimated_value = sum(
+        item.get("recommended_price", 0) for item in listing_queue
+    )
+
+    info(f"Summary:")
+    info(f"  Total inventory items: {total_inventory}")
+    info(f"  Filtered items: {total_filtered}")
+    info(f"  Listing queue length: {total_queue}")
+    info(f"  Total estimated value: ${total_estimated_value:.2f}")
 
     # -----------------------------
     # 6. Assisted Listing Workflow
     # -----------------------------
-    workflow_runner.run_assisted_workflow(listing_queue)
+    workflow_runner.run_assisted_workflow(
+        listing_queue,
+        dry_run=dry_run
+    )
 
     info("All done!")
 

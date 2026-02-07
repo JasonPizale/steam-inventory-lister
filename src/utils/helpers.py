@@ -94,3 +94,34 @@ def bad(msg: str) -> None:
 
 def highlight(msg: str) -> None:
     print(colour(msg, "blue"))
+
+def prompt_optional_float(prompt: str):
+    """
+    Prompt the user for a float value
+    """
+    while True:
+        value = input(prompt).strip()
+        if value == "":
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            print("Please enter a valid number or press Enter to skip.")
+
+def prompt_sort_key(default: str = "price") -> str:
+    """
+    Prompt the user for sort key
+    """
+    valid_keys = ["price", "name", "game"]
+    value = input(
+        f"Sort by (price/name/game) [{default}]: "
+    ).strip().lower()
+
+    if value == "":
+        return default
+    
+    if value in valid_keys:
+        return value
+
+    print(f"Invalid choice, defaulting to {default}")
+    return default

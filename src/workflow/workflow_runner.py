@@ -4,6 +4,25 @@ from utils.helpers import info, warn, wait
 
 DEFAULT_PAUSE_SECONDS = 1
 
+def show_preflight_summary(queue: List[Dict[str, Any]]) -> bool:
+    """
+    Show a summary of the listing queue and ask the user to confirm before proceeding.
+    Returns True if user confirms
+    """
+    total = len(queue)
+    prices = [item["recommended_price"] for item in queue if item.get("recommended_price")]
+
+    print("\n=== Listing Summary ===")
+    print(f"Total items: {total}")
+
+    if prices:
+        print(f"Lowest price: ${min(prices):.2f}")
+        print(f"Highest price: ${max(prices):.2f}")
+        print(f"Average price: ${sum(prices)/len(prices):.2f}")
+    
+    response = input("Proceed with listing? [y/n]: ").strip().lower()
+    return response == "y"
+    
 # -----------------------------
 # Core Workflow Functions
 # -----------------------------
