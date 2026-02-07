@@ -4,6 +4,14 @@ from utils.helpers import info, warn
 
 STEAM_SELL_URL = "https://steamcommunity.com/market/sellitem"
 
+CATEGORY_PRICE_RULES = {
+    "trading_card": {"undercut": 0.01},
+    "sticker": {"undercut": 0.01},
+    "case": {"undercut": 0.00},
+    "skin": {"undercut": 0.02},
+}
+
+
 # -----------------------------
 # Core Queue Functions
 # -----------------------------
@@ -40,10 +48,17 @@ def calculate_recommended_price(item: Dict[str, Any]) -> Optional[float]:
     Calculate recommended listing price based on lowest market price
     """
     lowest = item.get("lowest_price")
+    category = item.get("category", "other")
+
     if lowest is None:
         return None
     
-    recommended = round(lowest - 0.01, 2)
+    rule = CATEGORY_PRICE_RULES.get(category, {"undercut": 0.01})
+
+    if rule.get("skip")
+        return None
+
+    recommended = round(lowest - rule["undercut"], 2)
 
     if recommended <= 0:
         return None

@@ -5,6 +5,7 @@ from filtering import filter_manager
 from queue import queue_manager
 from workflow import workflow_runner
 from utils.helpers import info, warn, prompt_optional_float, prompt_sort_key
+from collections import Counter
 
 def run():
     info("Starting Steam Market Assistant")
@@ -41,12 +42,30 @@ def run():
     # -----------------------------
     # 4. Item Filtering
     # -----------------------------
+    
+    category_counts = Counter(
+    item.get("category", "other") for item in parsed_inventory
+    )
+
+    info("Detected categories in inventory:")
+    for category, count in sorted(category_counts.items()):
+        info(f"  {category}: {count}")
+
     info("Set optional filters (press Enter to skip):")
 
     min_price = prompt_optional_float("Minimum price ($): ")
     max_price = prompt_optional_float("Maximum price ($): ")
     sort_key = prompt_sort_key()
-    categories = None # TODO: implement category filtering
+
+    category_input = input(
+        "Filter by category (comma-separated, or Enter to skip): "
+    ).strip().lower()
+
+    categories = (
+        [c.strip() for c in category_input.split(",")]
+        if category_input
+        else None
+    )
 
     filtered_items = filter_manager.apply_filters(
         parsed_inventory,
@@ -55,9 +74,11 @@ def run():
         max_price,
         sort_key
     )
+
     if not filtered_items:
         warn("No items matched filters. Exiting.")
         return
+
     info(f"Filtered items: {len(filtered_items)}")
 
     # -----------------------------

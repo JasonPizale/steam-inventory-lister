@@ -3,6 +3,36 @@ Utility functions for filtering and sorting Steam inventory items.
 """
 from utils.helpers import is_marketable
 
+CATEGORY_KEYWORDS = {
+    "card": ["trading card"],
+    "booster": ["booster pack"],
+    "sticker": ["sticker"],
+    "case": ["case", "crate"],
+    "key": ["key"],
+    "agent": ["agent"],
+    "weapon": ["weapon", "rifle", "pistol", "knife", "skin"],
+    "cosmetic": ["hat", "cosmetic", "wearable"],
+    "tool": ["tool"],
+    "bundle": ["bundle", "set"],
+}
+
+def detect_category(item: dict) -> str:
+    """
+    Detects the category for a steam market item based on its name and type.
+    """
+    text = " ".join([
+        str(item.get("market_hash_name", "")),
+        str(item.get("type", "")),
+        str(item.get("name", "")),
+    ]).lower()
+
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in text:
+                return category
+
+    return "other"
+
 def filter_by_category(items, categories):
     """Returns items that match given categories and are marketable"""
     if not categories:
@@ -47,4 +77,15 @@ def apply_filters(items, categories, min_price, max_price, sort_key=None, descen
         items = sort_items(items, sort_key, descending)
 
     return items
+
+    for item in items:
+        if "category" not in item:
+            item["category"] = detect_category(item)
+
+    if categories:
+        categories = {c.lower() for c in categories}
+        items = [
+            item for item in items
+            if item.get("category") in categories
+        ]
 
