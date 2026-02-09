@@ -2,7 +2,7 @@ from auth import session_manager
 from inventory import inventory_fetcher
 from market import price_fetcher
 from filtering import filter_manager
-from queue import queue_manager
+from queue_manager_pkg import queue_manager
 from workflow import workflow_runner
 from utils.helpers import info, warn, prompt_optional_float, prompt_sort_key
 from collections import Counter

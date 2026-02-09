@@ -125,3 +125,9 @@ def prompt_sort_key(default: str = "price") -> str:
 
     print(f"Invalid choice, defaulting to {default}")
     return default
+
+def is_marketable(item: dict) -> bool:
+    """
+    Return True if item is marketable on Steam
+    """
+    return bool(item.get("marketable", False))
