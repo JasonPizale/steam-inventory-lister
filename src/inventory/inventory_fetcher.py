@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 
 STEAM_INVENTORY_URL = (
     "https://steamcommunity.com/inventory/{steamid}/{app_id}/{context_id}"
-    "?l=english&count=5000&start={start}"
+    "?l=english&count=5000&start_assetid={start}"
 )
 
 class InventoryFetchError(Exception):
@@ -12,13 +12,13 @@ class InventoryFetchError(Exception):
     pass
 
 
-# =============================================================================
+# -----------------------------
 # Public API
-# =============================================================================
+# -----------------------------
 
 def fetch_inventory(
     steamid: str,
-    session_data: Dict[str, Any],
+    session_headers: Dict[str, str],
     app_id: int = 730,
     context_id: int = 2,
     max_retries: int = 3
@@ -34,12 +34,12 @@ def fetch_inventory(
     page_num = 1
 
     while True:
-        print(f"[fetch_inventory] Fetching page {page_num} (start={start})")
+        print(f"[fetch_inventory] Fetching page {page_num} (start_assetid={start})")
 
         page = retry_fetch(
             lambda: _get_page(
                 steamid=steamid,
-                session_data=session_data,
+                session_headers=session_headers,
                 app_id=app_id,
                 context_id=context_id,
                 start=start
@@ -60,13 +60,13 @@ def fetch_inventory(
     return combined
 
 
-# =============================================================================
+# -----------------------------
 # Single page fetch
-# =============================================================================
+# -----------------------------
 
 def _get_page(
     steamid: str,
-    session_data: Dict[str, Any],
+    session_headers: Dict[str, str],
     app_id: int,
     context_id: int,
     start: int
@@ -80,15 +80,13 @@ def _get_page(
         start=start
     )
 
-    headers = _build_headers(session_data)
-
     try:
-        resp = requests.get(url, headers=headers)
+        resp = requests.get(url, headers=session_headers, timeout=15)
     except Exception as e:
         raise InventoryFetchError(f"Network error: {e}")
 
     if resp.status_code != 200:
-        raise InventoryFetchError(f"Steam returned {resp.status_code}")
+        raise InventoryFetchError(f"Steam returned HTTP {resp.status_code}")
 
     try:
         data = resp.json()
@@ -101,10 +99,9 @@ def _get_page(
     return data
 
 
-# =============================================================================
+# -----------------------------
 # Retry wrapper
-# =============================================================================
-
+# -----------------------------
 def retry_fetch(func, max_retries: int = 3, delay: float = 1.0):
     """Retry wrapper used for Steam API calls."""
     for attempt in range(1, max_retries + 1):
@@ -117,9 +114,9 @@ def retry_fetch(func, max_retries: int = 3, delay: float = 1.0):
             time.sleep(delay)
 
 
-# =============================================================================
+# -----------------------------
 # Parsing
-# =============================================================================
+# -----------------------------
 
 def parse_inventory(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
@@ -145,29 +142,9 @@ def parse_inventory(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     return merged
 
-
 def is_marketable(desc: Dict[str, Any]) -> bool:
     """Steam uses 'marketable: 1' to denote marketable items."""
     return desc.get("marketable", 0) == 1
-
-
-# =============================================================================
-# Headers
-# =============================================================================
-
-def _build_headers(session_data: Dict[str, Any]) -> Dict[str, str]:
-    cookies = session_data.get("cookies", {})
-    ua = session_data.get("user_agent", "")
-
-    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
-
-    return {
-        "User-Agent": ua,
-        "Cookie": cookie_str,
-        "Accept": "application/json",
-        "Referer": "https://steamcommunity.com/"
-    }
-
 
 if __name__ == "__main__":
     print("This module should be imported, not executed directly.")

@@ -55,7 +55,7 @@ def calculate_recommended_price(item: Dict[str, Any]) -> Optional[float]:
     
     rule = CATEGORY_PRICE_RULES.get(category, {"undercut": 0.01})
 
-    if rule.get("skip")
+    if rule.get("skip"):
         return None
 
     recommended = round(lowest - rule["undercut"], 2)

@@ -19,9 +19,24 @@ def run():
         return
 
     # -----------------------------
+    # 1b. SteamID input + guardrail
+    # -----------------------------
+    steamid = input("Enter your 17-digit SteamID64: ").strip()
+
+    # Guardrail: require numeric SteamID64 for now
+    if not steamid.isdigit() or len(steamid) != 17:
+        warn("Invalid SteamID. Please enter your 17-digit SteamID64.")
+        warn("Example: 7656119XXXXXXXXXX")
+        return
+
+    # -----------------------------
     # 2. Inventory Retrieval
     # -----------------------------
-    raw_inventory = inventory_fetcher.fetch_inventory(session_headers)
+    raw_inventory = inventory_fetcher.fetch_inventory(
+        steamid=steamid,
+        session_headers=session_headers
+    )
+
     if not raw_inventory:
         warn("No inventory data retrieved. Exiting.")
         return
@@ -30,7 +45,7 @@ def run():
     if not parsed_inventory:
         warn("Inventory is empty after parsing. Exiting.")
         return
-    
+
     info(f"Inventory loaded: {len(parsed_inventory)} items")
 
     # -----------------------------
@@ -42,9 +57,8 @@ def run():
     # -----------------------------
     # 4. Item Filtering
     # -----------------------------
-    
     category_counts = Counter(
-    item.get("category", "other") for item in parsed_inventory
+        item.get("category", "other") for item in parsed_inventory
     )
 
     info("Detected categories in inventory:")
@@ -94,7 +108,7 @@ def run():
         warn("Listing queue is empty. Exiting.")
         return
 
- # --- Pre-flight summary ---
+    # --- Pre-flight summary ---
     info("Pre-flight summary:")
     info(f"  Inventory items: {len(parsed_inventory)}")
     info(f"  Filtered items: {len(filtered_items)}")
@@ -117,7 +131,7 @@ def run():
         if confirm != "y":
             warn("User aborted workflow.")
             return
-            
+
     # -----------------------------
     # Export queue and display summary
     # -----------------------------
