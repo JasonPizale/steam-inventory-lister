@@ -4,21 +4,19 @@ from typing import Dict, Any, List
 
 STEAM_INVENTORY_URL = (
     "https://steamcommunity.com/inventory/{steamid}/{app_id}/{context_id}"
-    "?l=english&count=5000&start_assetid={start}"
+    "?l=english&count=5000&start={start}"
 )
 
 class InventoryFetchError(Exception):
     """Custom error for inventory fetch failures."""
     pass
 
-
 # -----------------------------
 # Public API
 # -----------------------------
-
 def fetch_inventory(
     steamid: str,
-    session_headers: Dict[str, str],
+    session_data: Dict[str, Dict[str, str]],
     app_id: int = 730,
     context_id: int = 2,
     max_retries: int = 3
@@ -29,17 +27,16 @@ def fetch_inventory(
     print("[fetch_inventory] Starting fetch...")
 
     combined = {"assets": [], "descriptions": []}
-
     start = 0
     page_num = 1
 
     while True:
-        print(f"[fetch_inventory] Fetching page {page_num} (start_assetid={start})")
+        print(f"[fetch_inventory] Fetching page {page_num}")
 
         page = retry_fetch(
             lambda: _get_page(
                 steamid=steamid,
-                session_headers=session_headers,
+                session_data=session_data,
                 app_id=app_id,
                 context_id=context_id,
                 start=start
@@ -59,20 +56,17 @@ def fetch_inventory(
     print("[fetch_inventory] Done.")
     return combined
 
-
 # -----------------------------
 # Single page fetch
 # -----------------------------
-
 def _get_page(
     steamid: str,
-    session_headers: Dict[str, str],
+    session_data: Dict[str, Dict[str, str]],
     app_id: int,
     context_id: int,
     start: int
 ) -> Dict[str, Any]:
     """Fetch a single inventory page from Steam."""
-
     url = STEAM_INVENTORY_URL.format(
         steamid=steamid,
         app_id=app_id,
@@ -80,8 +74,11 @@ def _get_page(
         start=start
     )
 
+    headers = session_data.get("headers", {})
+    cookies = session_data.get("cookies", {})
+
     try:
-        resp = requests.get(url, headers=session_headers, timeout=15)
+        resp = requests.get(url, headers=headers, cookies=cookies, timeout=15)
     except Exception as e:
         raise InventoryFetchError(f"Network error: {e}")
 
@@ -98,7 +95,6 @@ def _get_page(
 
     return data
 
-
 # -----------------------------
 # Retry wrapper
 # -----------------------------
@@ -113,11 +109,9 @@ def retry_fetch(func, max_retries: int = 3, delay: float = 1.0):
                 raise
             time.sleep(delay)
 
-
 # -----------------------------
 # Parsing
 # -----------------------------
-
 def parse_inventory(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Merge assets + descriptions into item objects.
@@ -137,7 +131,6 @@ def parse_inventory(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         item = {**asset, **desc}
         item["marketable"] = is_marketable(desc)
-
         merged.append(item)
 
     return merged
@@ -146,5 +139,8 @@ def is_marketable(desc: Dict[str, Any]) -> bool:
     """Steam uses 'marketable: 1' to denote marketable items."""
     return desc.get("marketable", 0) == 1
 
+# -----------------------------
+# Direct execution guard
+# -----------------------------
 if __name__ == "__main__":
     print("This module should be imported, not executed directly.")

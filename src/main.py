@@ -13,9 +13,15 @@ def run():
     # -----------------------------
     # 1. Authentication
     # -----------------------------
-    session_headers = session_manager.load_session_from_user()
-    if not session_headers:
-        warn("Failed to load session. Exiting.")
+    try:
+        session_data = session_manager.load_session_from_user()
+    except ValueError as e:
+        warn(f"{e} Exiting.")
+        return
+
+    # Optional: validate session
+    if not session_manager.validate_session(session_data.get("headers", {})):
+        warn("Session invalid. Exiting.")
         return
 
     # -----------------------------
@@ -23,7 +29,6 @@ def run():
     # -----------------------------
     steamid = input("Enter your 17-digit SteamID64: ").strip()
 
-    # Guardrail: require numeric SteamID64 for now
     if not steamid.isdigit() or len(steamid) != 17:
         warn("Invalid SteamID. Please enter your 17-digit SteamID64.")
         warn("Example: 7656119XXXXXXXXXX")
@@ -32,10 +37,14 @@ def run():
     # -----------------------------
     # 2. Inventory Retrieval
     # -----------------------------
-    raw_inventory = inventory_fetcher.fetch_inventory(
-        steamid=steamid,
-        session_headers=session_headers
-    )
+    try:
+        raw_inventory = inventory_fetcher.fetch_inventory(
+            steamid=steamid,
+            session_data=session_data  # <-- updated key here
+        )
+    except inventory_fetcher.InventoryFetchError as e:
+        warn(f"Failed to fetch inventory: {e}")
+        return
 
     if not raw_inventory:
         warn("No inventory data retrieved. Exiting.")
@@ -51,7 +60,7 @@ def run():
     # -----------------------------
     # 3. Market Price Fetching
     # -----------------------------
-    price_map = price_fetcher.build_price_map(parsed_inventory, session_headers)
+    price_map = price_fetcher.build_price_map(parsed_inventory, session_data)
     parsed_inventory = price_fetcher.merge_prices_with_inventory(parsed_inventory, price_map)
 
     # -----------------------------
