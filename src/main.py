@@ -1,4 +1,4 @@
-from auth import session_manager
+import json
 from inventory import inventory_fetcher
 from market import price_fetcher
 from filtering import filter_manager
@@ -11,43 +11,18 @@ def run():
     info("Starting Steam Market Assistant")
 
     # -----------------------------
-    # 1. Authentication
+    # 1. Load Inventory from JSON
     # -----------------------------
+    json_path = input("Enter path to your Steam inventory JSON: ").strip()
+    if not json_path:
+        warn("No file path provided. Exiting.")
+        return
+
     try:
-        session_data = session_manager.load_session_from_user()
-    except ValueError as e:
-        warn(f"{e} Exiting.")
-        return
-
-    # Optional: validate session
-    if not session_manager.validate_session(session_data.get("headers", {})):
-        warn("Session invalid. Exiting.")
-        return
-
-    # -----------------------------
-    # 1b. SteamID input + guardrail
-    # -----------------------------
-    steamid = input("Enter your 17-digit SteamID64: ").strip()
-
-    if not steamid.isdigit() or len(steamid) != 17:
-        warn("Invalid SteamID. Please enter your 17-digit SteamID64.")
-        warn("Example: 7656119XXXXXXXXXX")
-        return
-
-    # -----------------------------
-    # 2. Inventory Retrieval
-    # -----------------------------
-    try:
-        raw_inventory = inventory_fetcher.fetch_inventory(
-            steamid=steamid,
-            session_data=session_data  # <-- updated key here
-        )
-    except inventory_fetcher.InventoryFetchError as e:
-        warn(f"Failed to fetch inventory: {e}")
-        return
-
-    if not raw_inventory:
-        warn("No inventory data retrieved. Exiting.")
+        with open(json_path, "r", encoding="utf-8") as f:
+            raw_inventory = json.load(f)
+    except Exception as e:
+        warn(f"Failed to load JSON: {e}")
         return
 
     parsed_inventory = inventory_fetcher.parse_inventory(raw_inventory)
@@ -58,17 +33,15 @@ def run():
     info(f"Inventory loaded: {len(parsed_inventory)} items")
 
     # -----------------------------
-    # 3. Market Price Fetching
+    # 2. Market Price Fetching
     # -----------------------------
-    price_map = price_fetcher.build_price_map(parsed_inventory, session_data)
+    price_map = price_fetcher.build_price_map(parsed_inventory)
     parsed_inventory = price_fetcher.merge_prices_with_inventory(parsed_inventory, price_map)
 
     # -----------------------------
-    # 4. Item Filtering
+    # 3. Item Filtering
     # -----------------------------
-    category_counts = Counter(
-        item.get("category", "other") for item in parsed_inventory
-    )
+    category_counts = Counter(item.get("category", "other") for item in parsed_inventory)
 
     info("Detected categories in inventory:")
     for category, count in sorted(category_counts.items()):
@@ -80,15 +53,8 @@ def run():
     max_price = prompt_optional_float("Maximum price ($): ")
     sort_key = prompt_sort_key()
 
-    category_input = input(
-        "Filter by category (comma-separated, or Enter to skip): "
-    ).strip().lower()
-
-    categories = (
-        [c.strip() for c in category_input.split(",")]
-        if category_input
-        else None
-    )
+    category_input = input("Filter by category (comma-separated, or Enter to skip): ").strip().lower()
+    categories = [c.strip() for c in category_input.split(",")] if category_input else None
 
     filtered_items = filter_manager.apply_filters(
         parsed_inventory,
@@ -105,7 +71,7 @@ def run():
     info(f"Filtered items: {len(filtered_items)}")
 
     # -----------------------------
-    # 5. Build Listing Queue
+    # 4. Build Listing Queue
     # -----------------------------
     listing_queue = queue_manager.build_listing_queue(filtered_items)
 
@@ -152,9 +118,7 @@ def run():
     total_inventory = len(parsed_inventory)
     total_filtered = len(filtered_items)
     total_queue = len(listing_queue)
-    total_estimated_value = sum(
-        item.get("recommended_price", 0) for item in listing_queue
-    )
+    total_estimated_value = sum(item.get("recommended_price", 0) for item in listing_queue)
 
     info(f"Summary:")
     info(f"  Total inventory items: {total_inventory}")
@@ -163,12 +127,9 @@ def run():
     info(f"  Total estimated value: ${total_estimated_value:.2f}")
 
     # -----------------------------
-    # 6. Assisted Listing Workflow
+    # 5. Assisted Listing Workflow
     # -----------------------------
-    workflow_runner.run_assisted_workflow(
-        listing_queue,
-        dry_run=dry_run
-    )
+    workflow_runner.run_assisted_workflow(listing_queue, dry_run=dry_run)
 
     info("All done!")
 

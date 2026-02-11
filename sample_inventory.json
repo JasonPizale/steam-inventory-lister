@@ -1,0 +1,40 @@
+{
+  "assets": [
+    {
+      "appid": 730,
+      "classid": "123456789",
+      "instanceid": "987654321",
+      "amount": 1
+    },
+    {
+      "appid": 730,
+      "classid": "987654321",
+      "instanceid": "123456789",
+      "amount": 2
+    }
+  ],
+  "descriptions": [
+    {
+      "classid": "123456789",
+      "instanceid": "987654321",
+      "market_hash_name": "AK-47 | Redline (Field-Tested)",
+      "marketable": 1,
+      "type": "Rifle",
+      "icon_url": "https://steamcdn-a.akamaihd.net/...",
+      "tags": [
+        {"category": "Weapon", "internal_name": "AK-47"}
+      ]
+    },
+    {
+      "classid": "987654321",
+      "instanceid": "123456789",
+      "market_hash_name": "M4A1-S | Hyper Beast (Minimal Wear)",
+      "marketable": 1,
+      "type": "Rifle",
+      "icon_url": "https://steamcdn-a.akamaihd.net/...",
+      "tags": [
+        {"category": "Weapon", "internal_name": "M4A1-S"}
+      ]
+    }
+  ]
+}
