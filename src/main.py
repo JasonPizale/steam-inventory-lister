@@ -95,30 +95,26 @@ def run():
     info(f"Filtered items: {len(filtered_items)}")
 
     # -----------------------------
-    # 4. Build Listing Queue
+    # 4. Build Listing Queue & Pre-flight
     # -----------------------------
     listing_queue = queue_manager.build_listing_queue(filtered_items)
 
     if not listing_queue:
-        warn("Listing queue is empty. Exiting.")
+       warn("Listing queue is empty. Exiting.")
+       return
+
+    # Show summary and ask for confirmation
+    if not workflow_runner.show_preflight_summary(listing_queue):
+        warn("User cancelled before workflow start.")
         return
 
-    # --- Pre-flight summary ---
-    info("Pre-flight summary:")
-    info(f"  Inventory items: {len(parsed_inventory)}")
-    info(f"  Filtered items: {len(filtered_items)}")
-    info(f"  Listing queue: {len(listing_queue)}")
-    info(f"  Total estimated value: ${sum(item.get('recommended_price', 0.0) for item in listing_queue):.2f}")
-
-    # --- Dry-run prompt ---
+    # Dry-run prompt
     dry_run_input = input("Run in dry-run mode (no browser tabs)? (y/n): ").strip().lower()
     dry_run = dry_run_input == "y"
     if dry_run:
         warn("Dry run mode enabled - no browser tabs will be opened.")
 
-    # -----------------------------
-    # Guardrail: prevent accidental tab explosion
-    # -----------------------------
+    # Guardrail to prevent accidental tab explosion
     MAX_AUTO_ITEMS = 25
     if len(listing_queue) > MAX_AUTO_ITEMS:
         confirm = input(
@@ -128,13 +124,23 @@ def run():
             warn("User aborted workflow.")
             return
 
-    # -----------------------------
-    # Optional: Export queue
-    # -----------------------------
+    # Optional export of queue
     export_input = input("Export listing queue to JSON? (y/n): ").strip().lower()
     if export_input == "y":
         filepath = input("Enter file path to save queue (e.g., queue.json): ").strip()
         queue_manager.export_queue(listing_queue, filepath)
+
+    # Display quick summary
+    total_inventory = len(parsed_inventory)
+    total_filtered = len(filtered_items)
+    total_queue = len(listing_queue)
+    total_estimated_value = sum(item.get("recommended_price", 0) for item in listing_queue)
+
+    info(f"Summary:")
+    info(f"  Total inventory items: {total_inventory}")
+    info(f"  Filtered items: {total_filtered}")
+    info(f"  Listing queue length: {total_queue}")
+    info(f"  Total estimated value: ${total_estimated_value:.2f}")
 
     # -----------------------------
     # 5. Assisted Listing Workflow
