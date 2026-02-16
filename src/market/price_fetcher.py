@@ -1,66 +1,67 @@
 import requests
 import time
 import re
-from utils.helpers import info, warn
+from utils.helpers import warn, info
 
-def parse_price(price_str: str) -> float:
+# -----------------------------
+# Fetch live price with retries and parsing
+# -----------------------------
+def fetch_live_price(item, currency=1, max_retries=3, delay=1.0):
     """
-    Convert Steam API price string to float.
-    Handles USD, CAD, and other prefixes.
+    Fetches the lowest Steam Market price for an item.
+    Handles CAD/USD conversion and HTTP 429 rate limiting.
     """
-    if not price_str:
-        return 0.0
-    # Remove anything that is not a digit, dot, or minus
-    cleaned = re.sub(r"[^\d.]", "", price_str)
-    try:
-        return float(cleaned)
-    except ValueError:
-        return 0.0
+    market_name = item.get("market_hash_name")
+    if not market_name:
+        return {"lowest_price": 0.0}
 
-def fetch_live_price(item: dict, currency=1, retries=3, delay=1) -> dict:
-    """
-    Fetch the live Steam Market price for a single item.
-    currency: 1=USD, 20=CAD
-    retries: number of times to retry on HTTP errors
-    delay: seconds to wait between retries
-    """
-    market_hash_name = item.get("market_hash_name")
-    appid = item.get("appid")
-    url = (
-        f"https://steamcommunity.com/market/priceoverview/"
-        f"?appid={appid}&currency={currency}&market_hash_name={market_hash_name}"
-    )
-
-    for attempt in range(retries):
+    url = f"https://steamcommunity.com/market/priceoverview/?appid=730&currency={currency}&market_hash_name={market_name}"
+    
+    for attempt in range(1, max_retries + 1):
         try:
             response = requests.get(url, timeout=5)
             if response.status_code == 429:
-                warn(f"HTTP 429 rate limit for {market_hash_name}, retrying ({attempt+1}/{retries})...")
-                time.sleep(delay)
+                warn(f"HTTP 429 rate limit for {market_name}, retrying ({attempt}/{max_retries})...")
+                time.sleep(delay * attempt)  # incremental backoff
                 continue
-            if response.status_code != 200:
-                warn(f"HTTP {response.status_code} for {market_hash_name}")
-                return {"lowest_price": 0.0}
             data = response.json()
-            if not data.get("success"):
-                warn(f"Steam API returned failure for {market_hash_name}")
-                return {"lowest_price": 0.0}
             
-            price_str = data.get("lowest_price") or data.get("median_price")
-            price_value = parse_price(price_str)
-            return {"lowest_price": price_value}
+            price_str = data.get("lowest_price") or data.get("median_price") or "0"
+            # Remove currency symbols and whitespace
+            price_float = parse_price_string(price_str)
+            return {"lowest_price": price_float}
         except Exception as e:
-            warn(f"Error fetching price for {market_hash_name}: {e}")
+            warn(f"Attempt {attempt} failed for {market_name}: {e}")
             time.sleep(delay)
-    
-    warn(f"Failed to fetch price for {market_hash_name} after {retries} retries")
+    warn(f"Failed to fetch price for {market_name} after {max_retries} retries")
     return {"lowest_price": 0.0}
 
-def merge_prices_with_inventory(items: list, price_map: dict) -> list:
-    """Add the fetched prices back to the inventory items"""
-    for item in items:
-        key = item.get("market_hash_name")
-        if key in price_map:
-            item["lowest_price"] = price_map[key]
-            item["recommended_price"] = price_map[key]
-    return items
+
+# -----------------------------
+# Merge fetched prices into inventory
+# -----------------------------
+def merge_prices_with_inventory(inventory, price_map):
+    """
+    Adds a 'recommended_price' field to each item based on price_map.
+    """
+    for item in inventory:
+        market_name = item.get("market_hash_name")
+        if market_name in price_map:
+            item["recommended_price"] = price_map[market_name]
+    return inventory
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def parse_price_string(price_str):
+    """
+    Converts Steam Market price string to float.
+    Handles formats like 'CDN 0.03', '$0.03', '0.03 USD', etc.
+    """
+    try:
+        # Remove anything that's not a digit, dot, or minus
+        cleaned = re.sub(r"[^\d.\-]", "", str(price_str))
+        return float(cleaned)
+    except Exception:
+        return 0.0
