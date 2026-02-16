@@ -66,23 +66,37 @@ def run():
     # -----------------------------
     # 3. Item Filtering
     # -----------------------------
-    category_counts = Counter(item.get("type", "other") for item in parsed_inventory)
+    category_counts = Counter(item.get("type", "Other") for item in parsed_inventory)
 
-    info("Detected categories in inventory:")
-    for category, count in sorted(category_counts.items()):
-        info(f"  {category}: {count}")
+    info("Available categories:")
+    for index, (category, count) in enumerate(sorted(category_counts.items()), start=1):
+        print(f"{index}) {category} ({count})")
 
-    info("Set optional filters (press Enter to skip):")
+    print(f"{len(category_counts)+1}) All")
+
+    category_choice = input("Select category number: ").strip()
+
+    selected_categories = None
+
+    if category_choice.isdigit():
+        category_index = int(category_choice)
+        categories_list = sorted(category_counts.keys())
+
+        if 1 <= category_index <= len(categories_list):
+            selected_categories = [categories_list[category_index - 1]]
+        elif category_index == len(categories_list) + 1:
+            selected_categories = None
+
+    # Optional price filters
+    print("\nOptional price filter (press Enter to skip)")
     min_price = prompt_optional_float("Minimum price ($): ")
     max_price = prompt_optional_float("Maximum price ($): ")
-    sort_key = prompt_sort_key()
 
-    category_input = input("Filter by category (comma-separated, or Enter to skip): ").strip().lower()
-    categories = [c.strip() for c in category_input.split(",")] if category_input else None
+    sort_key = prompt_sort_key()
 
     filtered_items = filter_manager.apply_filters(
         parsed_inventory,
-        categories,
+        selected_categories,
         min_price,
         max_price,
         sort_key

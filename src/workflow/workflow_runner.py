@@ -1,6 +1,25 @@
 import webbrowser
+import platform
+import subprocess
+import urllib.parse
 from typing import List, Dict, Any
 from utils.helpers import info, warn, wait
+
+def open_url_in_browser(url: str) -> None:
+    """
+    Open a URL in the default browser.
+    Uses explorer.exe if running in WSL.
+    """
+    try:
+        if platform.system() == "Linux":
+            # WSL environment
+            subprocess.run(["explorer.exe", url.replace("&", "^&")], check=False)
+            return
+    except Exception:
+        pass
+
+    # fallback for normal Linux/Mac/Windows
+    webbrowser.open_new_tab(url)
 
 DEFAULT_PAUSE_SECONDS = 1
 
@@ -63,7 +82,7 @@ def run_assisted_workflow(
             info(f"[Dry Run] Would open: {sell_url}")
         else:
             info(f"Opening sell page for: {item.get('market_hash_name')}")
-            webbrowser.open_new_tab(sell_url)
+            open_url_in_browser(sell_url)
             wait(pause_seconds)
 
         opened += 1
@@ -104,8 +123,10 @@ def prompt_user(item: Dict[str, Any]) -> str:
 def generate_sell_url(item: Dict[str, Any]) -> str:
     """
     Generate a Steam Market sell URL from market_hash_name and appid.
+    Properly URL-encodes special characters to prevent broken links.
     Format: https://steamcommunity.com/market/listings/{appid}/{market_hash_name}
     """
     appid = item.get("appid", 730)
-    name = item.get("market_hash_name", "UNKNOWN").replace(" ", "%20")
-    return f"https://steamcommunity.com/market/listings/{appid}/{name}"
+    name = item.get("market_hash_name", "UNKNOWN")
+    encoded_name = urllib.parse.quote(name)  # URL-encode spaces, |, parentheses, etc.
+    return f"https://steamcommunity.com/market/listings/{appid}/{encoded_name}"

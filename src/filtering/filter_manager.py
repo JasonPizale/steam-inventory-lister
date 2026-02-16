@@ -68,24 +68,38 @@ def sort_items(items, key, descending=False):
     
     return sorted(items, key=lambda x: x.get(field), reverse=descending)
 
-def apply_filters(items, categories, min_price, max_price, sort_key=None, descending=False):
+def apply_filters(
+    items,
+    categories=None,
+    min_price=None,
+    max_price=None,
+    sort_key=None,
+    descending=False
+):
     """Apply category + price filters, then optional sorting"""
-    items = filter_by_category(items, categories)
-    items = filter_by_price(items, min_price, max_price)
-
-    if sort_key:
-        items = sort_items(items, sort_key, descending)
-
-    return items
+    filtered = []
 
     for item in items:
-        if "category" not in item:
-            item["category"] = detect_category(item)
+        price = item.get("recommended_price", 0)
 
-    if categories:
-        categories = {c.lower() for c in categories}
-        items = [
-            item for item in items
-            if item.get("category") in categories
-        ]
+        # Category filter
+        if categories and item.get("category") not in categories:
+            continue
 
+        # Min price
+        if min_price is not None and price < min_price:
+            continue
+
+        # Max price
+        if max_price is not None and price > max_price:
+            continue
+
+        filtered.append(item)
+
+    # Sorting
+    if sort_key == "price":
+        filtered.sort(key=lambda x: x.get("recommended_price", 0), reverse=True)
+    elif sort_key == "name":
+        filtered.sort(key=lambda x: x.get("market_hash_name", ""))
+
+    return filtered
