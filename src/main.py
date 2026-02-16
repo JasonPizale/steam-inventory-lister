@@ -1,11 +1,11 @@
 import json
+from collections import Counter
 from inventory import inventory_fetcher
 from market import price_fetcher
 from filtering import filter_manager
 from queue_manager_pkg import queue_manager
 from workflow import workflow_runner
 from utils.helpers import info, warn, prompt_optional_float, prompt_sort_key
-from collections import Counter
 
 def run():
     info("Starting Steam Market Assistant")
@@ -33,12 +33,17 @@ def run():
     info(f"Inventory loaded: {len(parsed_inventory)} items")
 
     # -----------------------------
+    # Assign broad categories
+    # -----------------------------
+    for item in parsed_inventory:
+        item["broad_category"] = filter_manager.detect_category(item)
+
+    # -----------------------------
     # 2. Market Price Fetching (optional live prices)
     # -----------------------------
     print("\nPrice Options:")
     print("1) Use recommended prices from JSON (fast, no network)")
     print("2) Fetch live Steam Market prices (requires internet)")
-
     choice = input("Choice (1 or 2, default 1): ").strip()
     live_fetch = choice == "2"
 
@@ -60,28 +65,23 @@ def run():
         currency=currency_id,
         delay=0.5
     )
-
     parsed_inventory = price_fetcher.merge_prices_with_inventory(parsed_inventory, price_map)
 
     # -----------------------------
     # 3. Item Filtering
     # -----------------------------
-    category_counts = Counter(item.get("type", "Other") for item in parsed_inventory)
+    category_counts = Counter(item.get("broad_category", "other") for item in parsed_inventory)
 
     info("Available categories:")
-    for index, (category, count) in enumerate(sorted(category_counts.items()), start=1):
-        print(f"{index}) {category} ({count})")
-
-    print(f"{len(category_counts)+1}) All")
+    categories_list = sorted(category_counts.keys())
+    for index, category in enumerate(categories_list, start=1):
+        print(f"{index}) {category} ({category_counts[category]})")
+    print(f"{len(categories_list)+1}) All")
 
     category_choice = input("Select category number: ").strip()
-
     selected_categories = None
-
     if category_choice.isdigit():
         category_index = int(category_choice)
-        categories_list = sorted(category_counts.keys())
-
         if 1 <= category_index <= len(categories_list):
             selected_categories = [categories_list[category_index - 1]]
         elif category_index == len(categories_list) + 1:
@@ -114,37 +114,30 @@ def run():
     listing_queue = queue_manager.build_listing_queue(filtered_items)
 
     if not listing_queue:
-       warn("Listing queue is empty. Exiting.")
-       return
+        warn("Listing queue is empty. Exiting.")
+        return
 
-    # Show summary and ask for confirmation
     if not workflow_runner.show_preflight_summary(listing_queue):
         warn("User cancelled before workflow start.")
         return
 
-    # Dry-run prompt
     dry_run_input = input("Run in dry-run mode (no browser tabs)? (y/n): ").strip().lower()
     dry_run = dry_run_input == "y"
     if dry_run:
         warn("Dry run mode enabled - no browser tabs will be opened.")
 
-    # Guardrail to prevent accidental tab explosion
     MAX_AUTO_ITEMS = 25
     if len(listing_queue) > MAX_AUTO_ITEMS:
-        confirm = input(
-            f"You are about to process {len(listing_queue)} items. Continue? (y/n): "
-        ).strip().lower()
+        confirm = input(f"You are about to process {len(listing_queue)} items. Continue? (y/n): ").strip().lower()
         if confirm != "y":
             warn("User aborted workflow.")
             return
 
-    # Optional export of queue
     export_input = input("Export listing queue to JSON? (y/n): ").strip().lower()
     if export_input == "y":
         filepath = input("Enter file path to save queue (e.g., queue.json): ").strip()
         queue_manager.export_queue(listing_queue, filepath)
 
-    # Display quick summary
     total_inventory = len(parsed_inventory)
     total_filtered = len(filtered_items)
     total_queue = len(listing_queue)
@@ -162,6 +155,7 @@ def run():
     workflow_runner.run_assisted_workflow(listing_queue, dry_run=dry_run)
 
     info("All done!")
+
 
 if __name__ == "__main__":
     run()

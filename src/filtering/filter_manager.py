@@ -16,9 +16,21 @@ CATEGORY_KEYWORDS = {
     "bundle": ["bundle", "set"],
 }
 
+BROAD_CATEGORY_MAP = {
+    "Rifle": "Weapon Skin",
+    "Sniper Rifle": "Weapon Skin",
+    "Pistol": "Weapon Skin",
+    "SMG": "Weapon Skin",
+    "Knife": "Weapon Skin",
+    "Skin": "Weapon Skin",
+    "Sticker": "Sticker",
+    "Case": "Case",
+    "Trading Card": "Trading Card",
+}
+
 def detect_category(item: dict) -> str:
     """
-    Detects the category for a steam market item based on its name and type.
+    Detects the broad category for a Steam Market item based on its name and type.
     """
     text = " ".join([
         str(item.get("market_hash_name", "")),
@@ -29,9 +41,8 @@ def detect_category(item: dict) -> str:
     for category, keywords in CATEGORY_KEYWORDS.items():
         for keyword in keywords:
             if keyword in text:
-                return category
-
-    return "other"
+                return BROAD_CATEGORY_MAP.get(category.capitalize(), "Other")
+    return "Other"
 
 def filter_by_category(items, categories):
     """Returns items that match given categories and are marketable"""
@@ -40,66 +51,49 @@ def filter_by_category(items, categories):
 
     return [
         i for i in items
-        if is_marketable(i) and i.get("type") in categories
+        if is_marketable(i) and i.get("broad_category") in categories
     ]
 
 def filter_by_price(items, min_price, max_price):
     """Return items with prices inside the min/max range"""
     filtered = []
     for item in items:
-        price = item.get("lowest_price")
-        if price is None:
-            continue
+        price = item.get("recommended_price", 0)
         if (min_price is None or price >= min_price) and \
-            (max_price is None or price <= max_price):
+           (max_price is None or price <= max_price):
             filtered.append(item)
-    return filtered 
+    return filtered
 
 def sort_items(items, key, descending=False):
     """Sort items by price, name, or game"""
     sort_map = {
-        "price": "lowest_price",
-        "name": "name",
-        "game": "game",
+        "price": "recommended_price",
+        "name": "market_hash_name",
+        "game": "game_name",
     }
     field = sort_map.get(key)
     if not field:
         return items
-    
-    return sorted(items, key=lambda x: x.get(field), reverse=descending)
+    return sorted(items, key=lambda x: x.get(field, 0), reverse=descending)
 
 def apply_filters(
     items,
     categories=None,
     min_price=None,
     max_price=None,
-    sort_key=None,
+    sort_key="price",
     descending=False
 ):
     """Apply category + price filters, then optional sorting"""
-    filtered = []
+    # Apply category + price
+    filtered = [
+        item for item in items
+        if is_marketable(item) and
+           (not categories or item.get("broad_category") in categories) and
+           (min_price is None or item.get("recommended_price", 0) >= min_price) and
+           (max_price is None or item.get("recommended_price", 0) <= max_price)
+    ]
 
-    for item in items:
-        price = item.get("recommended_price", 0)
-
-        # Category filter
-        if categories and item.get("category") not in categories:
-            continue
-
-        # Min price
-        if min_price is not None and price < min_price:
-            continue
-
-        # Max price
-        if max_price is not None and price > max_price:
-            continue
-
-        filtered.append(item)
-
-    # Sorting
-    if sort_key == "price":
-        filtered.sort(key=lambda x: x.get("recommended_price", 0), reverse=True)
-    elif sort_key == "name":
-        filtered.sort(key=lambda x: x.get("market_hash_name", ""))
-
+    # Apply sorting
+    filtered = sort_items(filtered, sort_key, descending)
     return filtered
