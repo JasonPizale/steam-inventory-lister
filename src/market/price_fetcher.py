@@ -1,85 +1,47 @@
-import time
 import requests
-from typing import List, Dict, Any, Optional
+import time
+from utils.helpers import info, warn
+import urllib.parse
 
-STEAM_PRICE_URL = "https://steamcommunity.com/market/priceoverview/"
-
-# -----------------------------
-# Helpers
-# -----------------------------
-def _parse_price(value: str) -> float:
-    """
-    Convert Steam price string like '$2.34' or 'CDN$3.45' to float.
-    """
-    if not value:
-        return 0.0
-    try:
-        return float(value.replace("$", "").replace("CDN", "").replace(",", "").strip())
-    except:
-        return 0.0
-
-# -----------------------------
-# Build price map
-# -----------------------------
-def build_price_map(
-    inventory: List[Dict[str, Any]],
-    live_fetch: bool = False,
-    currency: int = 1,
-    delay: float = 0.5
-) -> Dict[str, float]:
-    """
-    Build a price map from inventory items.
-    Options:
-      - live_fetch=True: fetch prices from Steam Market
-      - live_fetch=False: use 'recommended_price' in JSON or 0.0 as fallback
-      - currency: 1=USD, 20=CAD
-    """
+def build_price_map(items, live_fetch=False, currency=1, delay=0.5):
     price_map = {}
+    for item in items:
+        try:
+            name = item.get("market_hash_name")
+            appid = item.get("appid")
+            if not live_fetch:
+                price_map[name] = item.get("recommended_price", 0)
+                continue
 
-    for item in inventory:
-        market_hash_name = item.get("market_hash_name")
-        if not market_hash_name:
-            continue
+            url_name = urllib.parse.quote_plus(name)
+            url = (
+                f"https://steamcommunity.com/market/priceoverview/"
+                f"?currency={currency}&appid={appid}&market_hash_name={url_name}"
+            )
 
-        # fallback to recommended price
-        price = item.get("recommended_price", 0.0)
+            response = requests.get(url)
+            data = response.json()
+            lowest = data.get("lowest_price")
+            if lowest:
+                # Strip $/€ etc., convert to float
+                price_float = float("".join(c for c in lowest if c.isdigit() or c=='.'))
+                price_map[name] = price_float
+                info(f"Fetched live price for {name}: {price_float}")
+            else:
+                price_map[name] = 0.0
+                warn(f"No price available for {name}")
 
-        if live_fetch:
-            try:
-                params = {
-                    "appid": item.get("appid", 730),
-                    "currency": currency,
-                    "market_hash_name": market_hash_name
-                }
-                resp = requests.get(STEAM_PRICE_URL, params=params, timeout=10)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    price = _parse_price(data.get("lowest_price"))
-            except Exception:
-                pass
-            time.sleep(delay)
+        except Exception as e:
+            price_map[name] = 0.0
+            warn(f"Failed to fetch price for {name}: {e}")
 
-        price_map[market_hash_name] = price
+        time.sleep(delay)
 
     return price_map
 
-# -----------------------------
-# Merge prices with inventory
-# -----------------------------
-def merge_prices_with_inventory(
-    inventory: List[Dict[str, Any]],
-    price_map: Dict[str, float]
-) -> List[Dict[str, Any]]:
-    """
-    Add 'recommended_price' to inventory items from price_map
-    """
-    for item in inventory:
+def merge_prices_with_inventory(items, price_map):
+    for item in items:
         name = item.get("market_hash_name")
-        item["recommended_price"] = price_map.get(name, 0.0)
-    return inventory
-
-# -----------------------------
-# Direct execution guard
-# -----------------------------
-if __name__ == "__main__":
-    print("This module should be imported, not executed directly.")
+        if name in price_map:
+            item["recommended_price"] = price_map[name]
+    return items

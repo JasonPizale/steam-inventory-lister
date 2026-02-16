@@ -1,11 +1,11 @@
 import json
-from collections import Counter
 from inventory import inventory_fetcher
 from market import price_fetcher
 from filtering import filter_manager
 from queue_manager_pkg import queue_manager
 from workflow import workflow_runner
 from utils.helpers import info, warn, prompt_optional_float, prompt_sort_key
+from collections import Counter
 
 def run():
     info("Starting Steam Market Assistant")
@@ -51,26 +51,28 @@ def run():
 
     if live_fetch:
         print(f"Fetching live prices in {'CAD' if currency_id==20 else 'USD'}...")
+
+        # Only marketable items
+        marketable_items = [i for i in parsed_inventory if i.get("marketable")]
+        price_map = price_fetcher.build_price_map(
+            marketable_items,
+            live_fetch=True,
+            currency=currency_id,
+            delay=0.5
+        )
+
+        parsed_inventory = price_fetcher.merge_prices_with_inventory(parsed_inventory, price_map)
     else:
         print("Using recommended prices from JSON.")
-
-    price_map = price_fetcher.build_price_map(
-        parsed_inventory,
-        live_fetch=live_fetch,
-        currency=currency_id,
-        delay=0.5
-    )
-
-    parsed_inventory = price_fetcher.merge_prices_with_inventory(parsed_inventory, price_map)
 
     # -----------------------------
     # 3. Item Filtering
     # -----------------------------
-    # Detect categories
+    # Detect category for each item
     for item in parsed_inventory:
         item["category"] = filter_manager.detect_category(item)
 
-    category_counts = Counter(item["category"] for item in parsed_inventory)
+    category_counts = Counter(item.get("category", "other") for item in parsed_inventory)
 
     info("Available categories:")
     for index, (category, count) in enumerate(sorted(category_counts.items()), start=1):
@@ -78,7 +80,6 @@ def run():
     print(f"{len(category_counts)+1}) All")
 
     category_choice = input("Select category number: ").strip()
-
     selected_categories = None
     if category_choice.isdigit():
         category_index = int(category_choice)
@@ -113,11 +114,11 @@ def run():
     # 4. Build Listing Queue & Pre-flight
     # -----------------------------
     listing_queue = queue_manager.build_listing_queue(filtered_items)
-
     if not listing_queue:
-       warn("Listing queue is empty. Exiting.")
-       return
+        warn("Listing queue is empty. Exiting.")
+        return
 
+    # Show summary and ask for confirmation
     if not workflow_runner.show_preflight_summary(listing_queue):
         warn("User cancelled before workflow start.")
         return
@@ -131,9 +132,7 @@ def run():
     # Guardrail to prevent accidental tab explosion
     MAX_AUTO_ITEMS = 25
     if len(listing_queue) > MAX_AUTO_ITEMS:
-        confirm = input(
-            f"You are about to process {len(listing_queue)} items. Continue? (y/n): "
-        ).strip().lower()
+        confirm = input(f"You are about to process {len(listing_queue)} items. Continue? (y/n): ").strip().lower()
         if confirm != "y":
             warn("User aborted workflow.")
             return
