@@ -2,10 +2,10 @@ import json
 import urllib.parse
 from typing import List, Dict, Any, Optional
 from utils.helpers import info, warn
+from filtering import filter_manager
 
 STEAM_SELL_URL = "https://steamcommunity.com/market/sellitem"
 
-# Broad category undercut rules
 CATEGORY_PRICE_RULES = {
     "weapon skin": {"undercut": 0.02},
     "sticker": {"undercut": 0.01},
@@ -13,7 +13,6 @@ CATEGORY_PRICE_RULES = {
     "key": {"undercut": 0.01},
     "gloves": {"undercut": 0.02},
     "knife": {"undercut": 0.02},
-    "other": {"undercut": 0.01},
 }
 
 
@@ -23,11 +22,16 @@ CATEGORY_PRICE_RULES = {
 
 def build_listing_queue(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Build a listing-ready queue from filtered inventory items.
+    Build a listing-ready queue from filtered inventory items,
+    automatically assigning broad categories.
     """
     queue = []
 
     for item in items:
+        # Detect broad category for consistency
+        item_category = filter_manager.detect_category(item)
+        item["category"] = item_category
+
         price = calculate_recommended_price(item)
         if price is None:
             continue
@@ -37,7 +41,7 @@ def build_listing_queue(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "appid": item.get("appid"),
             "contextid": item.get("contextid", "2"),
             "assetid": item.get("assetid"),
-            "broad_category": item.get("broad_category", "other"),
+            "category": item_category,
             "recommended_price": price,
             "sell_url": build_sell_url(item),
         }
@@ -52,8 +56,8 @@ def calculate_recommended_price(item: Dict[str, Any]) -> Optional[float]:
     """
     Determine final listing price.
 
-    - If 'recommended_price' exists (JSON mode), use it.
-    - Otherwise calculate from lowest_price (live mode) with undercut.
+    If 'recommended_price' exists (JSON mode), use it.
+    Otherwise calculate from lowest_price (live mode).
     """
     # JSON mode
     if item.get("recommended_price") is not None:
@@ -61,7 +65,7 @@ def calculate_recommended_price(item: Dict[str, Any]) -> Optional[float]:
 
     # Live mode
     lowest = item.get("lowest_price")
-    category = item.get("broad_category", "other").lower()
+    category = item.get("category", "other").lower()
 
     if lowest is None:
         return None
@@ -72,6 +76,7 @@ def calculate_recommended_price(item: Dict[str, Any]) -> Optional[float]:
         return None
 
     recommended = round(lowest - rule["undercut"], 2)
+
     if recommended <= 0:
         return None
 
