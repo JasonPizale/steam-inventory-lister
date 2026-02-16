@@ -10,9 +10,6 @@ from collections import Counter
 def run():
     info("Starting Steam Market Assistant")
 
-    # -----------------------------
-    # 1. Load Inventory from JSON
-    # -----------------------------
     json_path = input("Enter path to your Steam inventory JSON: ").strip()
     if not json_path:
         warn("No file path provided. Exiting.")
@@ -32,13 +29,9 @@ def run():
 
     info(f"Inventory loaded: {len(parsed_inventory)} items")
 
-    # -----------------------------
-    # 2. Market Price Fetching (optional live prices)
-    # -----------------------------
     print("\nPrice Options:")
     print("1) Use recommended prices from JSON (fast, no network)")
     print("2) Fetch live Steam Market prices (requires internet)")
-
     choice = input("Choice (1 or 2, default 1): ").strip()
     live_fetch = choice == "2"
 
@@ -51,28 +44,30 @@ def run():
 
     if live_fetch:
         print(f"Fetching live prices in {'CAD' if currency_id==20 else 'USD'}...")
-
-        # Only marketable items
-        marketable_items = [i for i in parsed_inventory if i.get("marketable")]
-        price_map = price_fetcher.build_price_map(
-            marketable_items,
-            live_fetch=True,
-            currency=currency_id,
-            delay=0.5
-        )
-
-        parsed_inventory = price_fetcher.merge_prices_with_inventory(parsed_inventory, price_map)
     else:
         print("Using recommended prices from JSON.")
 
     # -----------------------------
-    # 3. Item Filtering
+    # Robust Price Fetching
     # -----------------------------
-    # Detect category for each item
+    price_map = {}
     for item in parsed_inventory:
-        item["category"] = filter_manager.detect_category(item)
+        if not item.get("marketable", True):
+            continue
+        try:
+            price_info = price_fetcher.fetch_live_price(item, currency=currency_id) if live_fetch else item
+            price_map[item["market_hash_name"]] = price_info.get("lowest_price", item.get("recommended_price", 0))
+            info(f"Fetched price for {item['market_hash_name']}: {price_map[item['market_hash_name']]}")
+        except Exception as e:
+            warn(f"Failed to fetch price for {item.get('market_hash_name')}: {e}")
+            price_map[item["market_hash_name"]] = 0.0
 
-    category_counts = Counter(item.get("category", "other") for item in parsed_inventory)
+    parsed_inventory = price_fetcher.merge_prices_with_inventory(parsed_inventory, price_map)
+
+    # -----------------------------
+    # Item Filtering
+    # -----------------------------
+    category_counts = Counter(filter_manager.detect_category(item) for item in parsed_inventory if item.get("marketable", True))
 
     info("Available categories:")
     for index, (category, count) in enumerate(sorted(category_counts.items()), start=1):
@@ -89,20 +84,11 @@ def run():
         elif category_index == len(categories_list) + 1:
             selected_categories = None
 
-    # Optional price filters
-    print("\nOptional price filter (press Enter to skip)")
     min_price = prompt_optional_float("Minimum price ($): ")
     max_price = prompt_optional_float("Maximum price ($): ")
-
     sort_key = prompt_sort_key()
 
-    filtered_items = filter_manager.apply_filters(
-        parsed_inventory,
-        selected_categories,
-        min_price,
-        max_price,
-        sort_key
-    )
+    filtered_items = filter_manager.apply_filters(parsed_inventory, selected_categories, min_price, max_price, sort_key)
 
     if not filtered_items:
         warn("No items matched filters. Exiting.")
@@ -111,25 +97,23 @@ def run():
     info(f"Filtered items: {len(filtered_items)}")
 
     # -----------------------------
-    # 4. Build Listing Queue & Pre-flight
+    # Build Listing Queue
     # -----------------------------
     listing_queue = queue_manager.build_listing_queue(filtered_items)
-    if not listing_queue:
-        warn("Listing queue is empty. Exiting.")
-        return
 
-    # Show summary and ask for confirmation
+    if not listing_queue:
+       warn("Listing queue is empty. Exiting.")
+       return
+
     if not workflow_runner.show_preflight_summary(listing_queue):
         warn("User cancelled before workflow start.")
         return
 
-    # Dry-run prompt
     dry_run_input = input("Run in dry-run mode (no browser tabs)? (y/n): ").strip().lower()
     dry_run = dry_run_input == "y"
     if dry_run:
         warn("Dry run mode enabled - no browser tabs will be opened.")
 
-    # Guardrail to prevent accidental tab explosion
     MAX_AUTO_ITEMS = 25
     if len(listing_queue) > MAX_AUTO_ITEMS:
         confirm = input(f"You are about to process {len(listing_queue)} items. Continue? (y/n): ").strip().lower()
@@ -137,13 +121,11 @@ def run():
             warn("User aborted workflow.")
             return
 
-    # Optional export of queue
     export_input = input("Export listing queue to JSON? (y/n): ").strip().lower()
     if export_input == "y":
         filepath = input("Enter file path to save queue (e.g., queue.json): ").strip()
         queue_manager.export_queue(listing_queue, filepath)
 
-    # Display quick summary
     total_inventory = len(parsed_inventory)
     total_filtered = len(filtered_items)
     total_queue = len(listing_queue)
@@ -155,9 +137,6 @@ def run():
     info(f"  Listing queue length: {total_queue}")
     info(f"  Total estimated value: ${total_estimated_value:.2f}")
 
-    # -----------------------------
-    # 5. Assisted Listing Workflow
-    # -----------------------------
     workflow_runner.run_assisted_workflow(listing_queue, dry_run=dry_run)
 
     info("All done!")
