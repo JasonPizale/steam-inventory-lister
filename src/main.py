@@ -1,15 +1,17 @@
 import json
+import time
 from inventory import inventory_fetcher
 from market import price_fetcher
 from filtering import filter_manager
-from queue_manager_pkg import queue_manager
-from workflow import workflow_runner
 from utils.helpers import info, warn, prompt_optional_float, prompt_sort_key
 from collections import Counter
 
 def run():
-    info("Starting Steam Market Assistant")
+    info("Starting Steam Inventory Analyzer")
 
+    # -----------------------------
+    # Load JSON
+    # -----------------------------
     json_path = input("Enter path to your Steam inventory JSON: ").strip()
     if not json_path:
         warn("No file path provided. Exiting.")
@@ -29,6 +31,9 @@ def run():
 
     info(f"Inventory loaded: {len(parsed_inventory)} items")
 
+    # -----------------------------
+    # Price options
+    # -----------------------------
     print("\nPrice Options:")
     print("1) Use recommended prices from JSON (fast, no network)")
     print("2) Fetch live Steam Market prices (requires internet)")
@@ -48,29 +53,49 @@ def run():
         print("Using recommended prices from JSON.")
 
     # -----------------------------
-    # Robust Price Fetching
+    # Price fetching (throttled + batched)
     # -----------------------------
     price_map = {}
-    MIN_DELAY = 1.5
-    for item in parsed_inventory:
-        if not item.get("marketable", True):
-            continue
-        try:
-            price_info = price_fetcher.fetch_live_price(item, currency=currency_id)
-            price_map[item["market_hash_name"]] = price_info.get("lowest_price", 0)
-            info(f"Fetched price for {item['market_hash_name']}: {price_map[item['market_hash_name']]}")
-            time.sleep(MIN_DELAY)
-        except Exception as e:
-            warn(f"Failed to fetch price for {item.get('market_hash_name')}: {e}")
-            price_map[item["market_hash_name"]] = 0.0
+
+    MIN_DELAY = 1.5        # delay between EACH request
+    BATCH_SIZE = 20        # number of items per batch
+    BATCH_DELAY = 5        # delay between batches
+
+    marketable_items = [item for item in parsed_inventory if item.get("marketable", True)]
+    total_items = len(marketable_items)
+    info(f"Preparing to fetch prices for {total_items} marketable items")
+
+    for batch_start in range(0, total_items, BATCH_SIZE):
+        batch = marketable_items[batch_start:batch_start + BATCH_SIZE]
+        batch_number = (batch_start // BATCH_SIZE) + 1
+        info(f"Starting batch {batch_number} ({len(batch)} items)")
+
+        for item in batch:
+            name = item["market_hash_name"]
+            try:
+                if live_fetch:
+                    price_info = price_fetcher.fetch_live_price(item, currency=currency_id)
+                    price = price_info.get("lowest_price", 0.0)
+                else:
+                    price = item.get("recommended_price", 0.0)
+
+                price_map[name] = price
+                info(f"Fetched price for {name}: {price}")
+                time.sleep(MIN_DELAY)
+            except Exception as e:
+                warn(f"Failed to fetch price for {name}: {e}")
+                price_map[name] = item.get("recommended_price", 0.0)
+
+        if batch_start + BATCH_SIZE < total_items:
+            info(f"Batch {batch_number} complete. Waiting {BATCH_DELAY}s before next batch...")
+            time.sleep(BATCH_DELAY)
 
     parsed_inventory = price_fetcher.merge_prices_with_inventory(parsed_inventory, price_map)
 
     # -----------------------------
-    # Item Filtering
+    # Category counts
     # -----------------------------
     category_counts = Counter(filter_manager.detect_category(item) for item in parsed_inventory if item.get("marketable", True))
-
     info("Available categories:")
     for index, (category, count) in enumerate(sorted(category_counts.items()), start=1):
         print(f"{index}) {category} ({count})")
@@ -88,8 +113,13 @@ def run():
 
     min_price = prompt_optional_float("Minimum price ($): ")
     max_price = prompt_optional_float("Maximum price ($): ")
-    sort_key = prompt_sort_key()
 
+    # Force sorting to only price or name
+    sort_key = prompt_sort_key(allow_game=False)
+
+    # -----------------------------
+    # Filtering
+    # -----------------------------
     filtered_items = filter_manager.apply_filters(parsed_inventory, selected_categories, min_price, max_price, sort_key)
 
     if not filtered_items:
@@ -99,49 +129,31 @@ def run():
     info(f"Filtered items: {len(filtered_items)}")
 
     # -----------------------------
-    # Build Listing Queue
+    # Display summary
     # -----------------------------
-    listing_queue = queue_manager.build_listing_queue(filtered_items)
+    total_value = sum(item.get("recommended_price", 0) for item in filtered_items)
+    print("\n=== Inventory Summary ===")
+    print(f"Total items: {len(parsed_inventory)}")
+    print(f"Filtered items: {len(filtered_items)}")
+    print(f"Total estimated value: ${total_value:.2f}")
+    print("\nFiltered Items:")
+    for item in filtered_items:
+        print(f"{item['market_hash_name']} - ${item.get('recommended_price',0):.2f}")
 
-    if not listing_queue:
-       warn("Listing queue is empty. Exiting.")
-       return
-
-    if not workflow_runner.show_preflight_summary(listing_queue):
-        warn("User cancelled before workflow start.")
-        return
-
-    dry_run_input = input("Run in dry-run mode (no browser tabs)? (y/n): ").strip().lower()
-    dry_run = dry_run_input == "y"
-    if dry_run:
-        warn("Dry run mode enabled - no browser tabs will be opened.")
-
-    MAX_AUTO_ITEMS = 25
-    if len(listing_queue) > MAX_AUTO_ITEMS:
-        confirm = input(f"You are about to process {len(listing_queue)} items. Continue? (y/n): ").strip().lower()
-        if confirm != "y":
-            warn("User aborted workflow.")
-            return
-
-    export_input = input("Export listing queue to JSON? (y/n): ").strip().lower()
+    # -----------------------------
+    # Optional export
+    # -----------------------------
+    export_input = input("\nExport filtered inventory to JSON? (y/n): ").strip().lower()
     if export_input == "y":
-        filepath = input("Enter file path to save queue (e.g., queue.json): ").strip()
-        queue_manager.export_queue(listing_queue, filepath)
+        filepath = input("Enter file path to save (e.g., filtered.json): ").strip()
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(filtered_items, f, indent=2)
+            info(f"Filtered inventory exported to {filepath}")
+        except Exception as e:
+            warn(f"Failed to export JSON: {e}")
 
-    total_inventory = len(parsed_inventory)
-    total_filtered = len(filtered_items)
-    total_queue = len(listing_queue)
-    total_estimated_value = sum(item.get("recommended_price", 0) for item in listing_queue)
-
-    info(f"Summary:")
-    info(f"  Total inventory items: {total_inventory}")
-    info(f"  Filtered items: {total_filtered}")
-    info(f"  Listing queue length: {total_queue}")
-    info(f"  Total estimated value: ${total_estimated_value:.2f}")
-
-    workflow_runner.run_assisted_workflow(listing_queue, dry_run=dry_run)
-
-    info("All done!")
+    info("Done analyzing inventory!")
 
 if __name__ == "__main__":
     run()
