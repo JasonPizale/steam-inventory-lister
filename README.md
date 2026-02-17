@@ -1,69 +1,74 @@
-# Steam Inventory Lister
-A utility that loads and analyzes your Steam inventory from a JSON file, uses provided item prices, and helps you prepare multiple items for sale more efficiently.
+# Steam Inventory Analyzer
 
-# Project Goals
-- Make it easier to handle large Steam inventories
-- Process item values from JSON input
-- Help prepare bulk listings without violating Steam's restrictions
-- Reduce repetitive manual actions
+![Python](https://img.shields.io/badge/python-3.8%2B-blue) ![Requests](https://img.shields.io/badge/requests-installed-green)
 
-# Features
-- Load Steam inventory from a JSON file
-- Use `recommended_price` from inventory data for each item
-- Filter items by category or price range
-- Generate a listing queue for user review
-- Allow user-controlled confirmation of each listing
-- No network requests are required to fetch inventory or prices
+## Pivoted Project
+Originally a Steam Market listing tool, this project now focuses on **analyzing your Steam inventory**, sorting items by category, and calculating **total estimated value**.
 
-# Tech Stack
-- Python 3.x
-- Standard library for JSON handling and file I/O
-- (Optional) CLI enhancements for improved usability
-- (Optional) Modular structure for easy extensions
+---
 
-# Inventory JSON Example
-The program now accepts a JSON file containing your Steam inventory instead of requiring session cookies.
+## Features ✅
+- Load your Steam inventory JSON.
+- Fetch or use pre-existing recommended prices for items.
+- Filter items by **category**, **price range**, and **name**.
+- Sort items by **price** or **name**.
+- Summarize **total inventory value** and filtered item counts.
+- Designed for **speed and usability with large inventories**.
 
-Example structure of the inventory JSON:
+---
 
-```json
-{
-  "assets": [
-    {
-      "appid": 730,
-      "classid": "123456789",
-      "instanceid": "987654321",
-      "amount": 1
-    },
-    {
-      "appid": 730,
-      "classid": "987654321",
-      "instanceid": "123456789",
-      "amount": 2
-    }
-  ],
-  "descriptions": [
-    {
-      "classid": "123456789",
-      "instanceid": "987654321",
-      "market_hash_name": "AK-47 | Redline (Field-Tested)",
-      "marketable": 1,
-      "type": "Rifle",
-      "icon_url": "https://steamcdn-a.akamaihd.net/...",
-      "tags": [
-        {"category": "Weapon", "internal_name": "AK-47"}
-      ]
-    },
-    {
-      "classid": "987654321",
-      "instanceid": "123456789",
-      "market_hash_name": "M4A1-S | Hyper Beast (Minimal Wear)",
-      "marketable": 1,
-      "type": "Rifle",
-      "icon_url": "https://steamcdn-a.akamaihd.net/...",
-      "tags": [
-        {"category": "Weapon", "internal_name": "M4A1-S"}
-      ]
-    }
-  ]
-}
+## Getting Started 🚀
+
+### 1. Clone the repository
+
+### 2. Prepare your inventory JSON
+- Export your Steam inventory via Steam Web or from a local backup.
+
+### 3. Run the analyzer
+- python3 main.py
+
+### 4. Follow the prompts
+- Choose whether to fetch live prices or use recommended JSON prices.
+- Select currency (USD or CAD).
+- Pick categories to filter (or choose "All").
+- Set optional minimum/maximum price filters.
+- View summarized results in the terminal.
+
+### Notes ⚠️
+- Live price fetching may trigger Steam rate limits.
+- For large inventories, use recommended JSON prices for faster runs.
+- This project no longer lists items on the Steam Market.
+- All workflow/browser automation features have been removed.
+
+### Project Structure 📁
+- main.py                   ← Main script for loading, filtering, sorting, and summarizing inventory
+- inventory/                ← Inventory parsing utilities
+- market/                   ← Price fetching functions
+- filtering/                ← Item category detection and filter functions
+- utils/helpers.py          ← Logging, input prompts, and helper functions
+
+### Usage Example 💻
+  Run the script:
+  
+    - python3 main.py
+    
+  Example prompts:
+  
+    Select price option: 2
+    Select currency: 1 (USD)
+    Available categories:
+        1) case
+        2) other
+        3) weapon skin
+        4) All
+      Select category number: 3
+      Minimum price ($): 0.05
+      Maximum price ($): 500
+      Sort by (price/name) [price]: price
+    
+  Sample output:
+  
+    Filtered items: 18
+    Total inventory items: 90
+    Listing queue length: 18
+    Total estimated value: $345.12
